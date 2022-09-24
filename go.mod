@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/EventStore/EventStore-Client-Go v1.0.2
-	github.com/cantara/bragi v0.5.4
+	github.com/cantara/bragi v0.5.5
 	github.com/dgraph-io/badger v1.6.2
 	github.com/gofrs/uuid v4.3.0+incompatible
 	github.com/google/uuid v1.3.0
