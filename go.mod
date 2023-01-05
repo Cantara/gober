@@ -3,7 +3,7 @@ module github.com/cantara/gober
 go 1.19
 
 require (
-	github.com/EventStore/EventStore-Client-Go v1.0.2
+	github.com/EventStore/EventStore-Client-Go/v3 v3.0.0
 	github.com/cantara/bragi v0.6.3
 	github.com/dgraph-io/badger v1.6.2
 	github.com/gin-contrib/cors v1.4.0
