@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cantara/gober/stream/consumer"
-	"github.com/dgraph-io/badger/options"
+	"github.com/dgraph-io/badger/v3/options"
 
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v3"
 
 	log "github.com/cantara/bragi/sbragi"
 
