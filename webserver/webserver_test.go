@@ -1,9 +1,10 @@
 package webserver
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestPanicRecover(t *testing.T) {

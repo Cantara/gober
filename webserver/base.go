@@ -4,17 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/pprof"
+	"net/url"
+	"os"
+	"strings"
+
 	"github.com/cantara/bragi"
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/webserver/health"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"net/http"
-	"net/http/pprof"
-	"net/url"
-	"os"
-	"strings"
 )
 
 const (
@@ -49,7 +50,7 @@ func init() {
 	}
 	if os.Getenv("debug.port") != "" {
 		go func() {
-			log.WithError(http.ListenAndServe("localhost:"+os.Getenv("debug.port"), nil)).
+			log.WithError(http.ListenAndServe(":"+os.Getenv("debug.port"), nil)).
 				Info("while running debug server", "port", os.Getenv("debug.port"))
 		}()
 	}

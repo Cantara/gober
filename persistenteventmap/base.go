@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
+
 	"github.com/cantara/gober/stream/consumer"
 	"github.com/dgraph-io/badger/options"
 
@@ -44,7 +46,9 @@ type mapData[DT any] struct {
 }
 
 func Init[DT any](s stream.Stream, dataTypeName, dataTypeVersion string, p stream.CryptoKeyProvider, getKey func(dt DT) string, ctx context.Context) (ed EventMap[DT], err error) {
-	db, err := badger.Open(badger.DefaultOptions("./eventmap/" + dataTypeName).
+	path := "./eventmap/" + dataTypeName
+	os.MkdirAll(path, 0750)
+	db, err := badger.Open(badger.DefaultOptions(path).
 		WithMaxTableSize(1024 * 1024 * 8).
 		WithValueLogFileSize(1024 * 1024 * 8).
 		WithValueLogLoadingMode(options.FileIO))

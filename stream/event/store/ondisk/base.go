@@ -145,6 +145,7 @@ func (es *Stream) Stream(
 			}
 			readTo := uint64(0)
 			scanner := bufio.NewScanner(db)
+			scanner.Buffer(make([]byte, 1<<32), 1<<32)
 			scanner.Split(bufio.ScanLines)
 			for readTo < position && scanner.Scan() {
 				// scanner.Text()
@@ -164,7 +165,7 @@ func (es *Stream) Stream(
 						t := scanner.Text()
 						err = json.UnmarshalFromString(t, &se)
 						if err != nil {
-							log.WithError(err).Fatal("while unmarshalling event from store")
+							log.WithError(err).Fatal("while unmarshalling event from store", "name", es.name, "json", t)
 						}
 						eventChan <- store.ReadEvent{
 							Event:    se.Event,
