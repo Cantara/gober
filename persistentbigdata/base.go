@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
 	"github.com/cantara/gober/stream/consumer"
 	"github.com/cantara/gober/webserver"
 	"github.com/dgraph-io/badger"
 	"github.com/dgraph-io/badger/options"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
-	"io"
-	"net/http"
-	"strings"
 
 	log "github.com/cantara/bragi/sbragi"
 
@@ -182,7 +183,7 @@ func Init[DT, MT any](serv *webserver.Server, s stream.Stream, dataTypeName, dat
 			case e := <-eventChan:
 				func() {
 					defer e.Acc()
-					if e.Type == event.Delete {
+					if e.Type == event.Deleted {
 						m.delete(e.ReadEvent)
 						return
 					}
@@ -220,7 +221,7 @@ func (m *mapData[DT, MT]) create(e event.ReadEvent[discoveryMetadata[MT]]) {
 		}
 
 		es := event.Event[discoveryMetadata[MT]]{
-			Type: event.Update,
+			Type: event.Updated,
 			Data: dmd,
 			Metadata: event.Metadata{
 				Version:  m.dataTypeVersion,
@@ -260,7 +261,7 @@ func (m *mapData[DT, MT]) create(e event.ReadEvent[discoveryMetadata[MT]]) {
 			}
 
 			es := event.Event[discoveryMetadata[MT]]{
-				Type: event.Update,
+				Type: event.Updated,
 				Data: dmd,
 				Metadata: event.Metadata{
 					Version:  m.dataTypeVersion,
@@ -299,7 +300,7 @@ func (m *mapData[DT, MT]) create(e event.ReadEvent[discoveryMetadata[MT]]) {
 		if err != nil {
 			return err
 		}
-		if e.Type == event.Update {
+		if e.Type == event.Updated {
 			err = txn.Delete(dmd.Meta.OldId.Bytes())
 			if err != nil {
 				return err
@@ -466,7 +467,7 @@ func (m *mapData[DT, MT]) Delete(data MT) (err error) {
 		return
 	}
 	e := event.Event[discoveryMetadata[MT]]{
-		Type: event.Delete,
+		Type: event.Deleted,
 		Data: discoveryMetadata[MT]{
 			Meta: md,
 		},
@@ -492,7 +493,7 @@ func (m *mapData[DT, MT]) Set(data DT, meta MT) (err error) {
 	if err != nil {
 		return
 	}
-	eventType := event.Create
+	eventType := event.Created
 	md := metadata[MT]{
 		NewId: newId,
 		Data:  meta,
@@ -517,7 +518,7 @@ func (m *mapData[DT, MT]) Set(data DT, meta MT) (err error) {
 		err = json.Unmarshal(ed, &smd)
 	}
 	if err == nil {
-		eventType = event.Update
+		eventType = event.Updated
 		md.OldId = smd.NewId
 	}
 	u := m.server.Url()

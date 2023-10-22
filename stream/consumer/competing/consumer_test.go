@@ -12,7 +12,7 @@ import (
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store"
-	"github.com/cantara/gober/stream/event/store/inmemory"
+	"github.com/cantara/gober/stream/event/store/ondisk"
 )
 
 var c Consumer[dd]
@@ -38,7 +38,7 @@ func cryptKeyProvider(_ string) log.RedactedString {
 
 func TestInit(t *testing.T) {
 	ctxGlobal, ctxGlobalCancel = context.WithCancel(context.Background())
-	pers, err := inmemory.Init(STREAM_NAME, ctxGlobal)
+	pers, err := ondisk.Init(STREAM_NAME, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
@@ -61,7 +61,7 @@ func TestStoreOrder(t *testing.T) {
 			Extra: "extra metadata test",
 		}
 		e := event.Event[dd]{
-			Type: event.Create,
+			Type: event.Created,
 			Data: data,
 			Metadata: event.Metadata{
 				Extra:    map[string]any{"extra": meta.Extra},
@@ -79,8 +79,12 @@ func TestStoreOrder(t *testing.T) {
 			read.Acc()
 		}()
 
-		c.Write() <- event.WriteEvent[dd]{
-			Event: e,
+		we := event.NewWriteEvent(e)
+		c.Write() <- we
+		status := <-we.Done()
+		if status.Error != nil {
+			t.Error(status.Error)
+			return
 		}
 		/*
 			_, err := c.Store(e)
@@ -126,22 +130,29 @@ func TestTimeout(t *testing.T) {
 	}
 
 	e := event.Event[dd]{
-		Type: event.Create,
+		Type: event.Created,
 		Data: data,
 		Metadata: event.Metadata{
 			DataType: "datatype",
 		},
 	}
 
-	c.Write() <- event.WriteEvent[dd]{
-		Event: e,
+	we := event.NewWriteEvent(e)
+	c.Write() <- we
+	status := <-we.Done()
+	if status.Error != nil {
+		t.Error(status.Error)
+		return
 	}
 	/*
-		_, err := c.Store(e)
-		if err != nil {
-			t.Error(err)
-			return
+		c.Write() <- event.WriteEvent[dd]{
+			Event: e,
 		}
+			_, err := c.Store(e)
+			if err != nil {
+				t.Error(err)
+				return
+			}
 	*/
 	log.Info("reading event to discard")
 	read := <-c.Stream()

@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+
 	"github.com/cantara/gober/stream"
 	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store"

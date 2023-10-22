@@ -2,10 +2,10 @@ package inmemory
 
 import (
 	"context"
-	"github.com/cantara/gober/stream/event"
-	"github.com/cantara/gober/stream/event/store"
 	"sync"
 	"time"
+
+	"github.com/cantara/gober/stream/event/store"
 )
 
 type inMemEvent struct {
@@ -64,7 +64,7 @@ func Init(name string, ctx context.Context) (es *Stream, err error) {
 					es.data.db = append(es.data.db, se)
 					es.data.position = se.Position
 					if e.Status != nil {
-						e.Status <- event.WriteStatus{
+						e.Status <- store.WriteStatus{
 							Time:     se.Created,
 							Position: se.Position,
 						}

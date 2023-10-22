@@ -1,6 +1,9 @@
 package event
 
-import "github.com/gofrs/uuid"
+import (
+	log "github.com/cantara/bragi/sbragi"
+	"github.com/gofrs/uuid"
+)
 
 type builder struct {
 	Id       uuid.UUID
@@ -14,7 +17,7 @@ type Builder interface {
 	WithData(data []byte) builder
 	WithMetadata(data Metadata) builder
 	BuildRead() (ev ByteReadEvent, err error)
-	BuildStore() (ev ByteWriteEvent, err error)
+	BuildStore() (ev WriteEvent[[]byte], err error)
 }
 
 func NewBuilder() Builder {
@@ -38,6 +41,7 @@ func (e builder) WithMetadata(data Metadata) builder {
 
 func (e builder) BuildRead() (ev ByteReadEvent, err error) {
 	if e.Type == "" {
+		log.Error("missing event type in builder")
 		err = InvalidTypeError
 		return
 	}
@@ -52,8 +56,9 @@ func (e builder) BuildRead() (ev ByteReadEvent, err error) {
 	return
 }
 
-func (e builder) BuildStore() (ev ByteWriteEvent, err error) {
+func (e builder) BuildStore() (ev WriteEvent[[]byte], err error) {
 	if e.Type == "" {
+		log.Error("missing event type in builder")
 		err = InvalidTypeError
 		return
 	}
@@ -64,8 +69,8 @@ func (e builder) BuildStore() (ev ByteWriteEvent, err error) {
 		}
 	}
 	e.Metadata.EventType = e.Type
-	ev = ByteWriteEvent{
-		Event: Event[[]byte]{
+	ev = WriteEvent[[]byte]{
+		event: Event[[]byte]{
 			Type:     e.Type,
 			Data:     e.Data,
 			Metadata: e.Metadata,

@@ -3,11 +3,12 @@ package eventstore
 import (
 	"context"
 	"fmt"
-	"github.com/EventStore/EventStore-Client-Go/esdb"
-	jsoniter "github.com/json-iterator/go"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/EventStore/EventStore-Client-Go/esdb"
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/gofrs/uuid"
 
@@ -50,11 +51,11 @@ func TestStore(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	status := make(chan event.WriteStatus, 1)
+	status := make(chan store.WriteStatus, 1)
 	es.Write() <- store.WriteEvent{
 		Event: store.Event{
 			Id:   uuid.Must(uuid.NewV7()),
-			Type: event.Create,
+			Type: string(event.Created),
 			Data: bytes,
 		},
 		Status: status,
@@ -82,7 +83,7 @@ func TestStream(t *testing.T) {
 		return
 	}
 	e := <-stream
-	if e.Type != event.Create {
+	if e.Type != string(event.Created) {
 		t.Error(fmt.Errorf("missmatch event types"))
 		return
 	}
@@ -136,7 +137,7 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		es.Write() <- store.WriteEvent{
 			Event: store.Event{
 				Id:   uuid.Must(uuid.NewV7()),
-				Type: event.Create,
+				Type: string(event.Created),
 				Data: bytes,
 			},
 			//Status: status,
@@ -162,7 +163,7 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		if ctx.Err() != nil {
 			b.Error(ctx.Err())
 		}
-		if e.Type != event.Create {
+		if e.Type != string(event.Created) {
 			b.Error(fmt.Errorf("missmatch event types"), e)
 			return
 		}
@@ -212,7 +213,7 @@ func BenchmarkEventStore(b *testing.B) {
 		writeEvents[i] = esdb.EventData{
 			EventID:     uuid.Must(uuid.NewV7()),
 			ContentType: esdb.BinaryContentType,
-			EventType:   string(event.Create),
+			EventType:   string(event.Created),
 			Data:        bytes,
 		}
 	}
@@ -313,7 +314,7 @@ func BenchmarkEventStore(b *testing.B) {
 				}
 
 				e := subEvent.EventAppeared.OriginalEvent()
-				if event.TypeFromString(e.EventType) != event.Create {
+				if event.TypeFromString(e.EventType) != event.Created {
 					b.Error(fmt.Errorf("missmatch event types"), e)
 					return
 				}
@@ -324,7 +325,7 @@ func BenchmarkEventStore(b *testing.B) {
 				ess := store.ReadEvent{
 					Event: store.Event{
 						Id:       e.EventID,
-						Type:     event.TypeFromString(e.EventType),
+						Type:     e.EventType,
 						Data:     e.Data,
 						Metadata: e.UserMetadata,
 					},

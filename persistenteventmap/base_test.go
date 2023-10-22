@@ -3,10 +3,12 @@ package persistenteventmap
 import (
 	"context"
 	"fmt"
-	log "github.com/cantara/bragi/sbragi"
-	"github.com/cantara/gober/stream/event/store/inmemory"
 	"os"
 	"testing"
+
+	log "github.com/cantara/bragi/sbragi"
+	"github.com/cantara/gober/stream/event/store/ondisk"
+	"github.com/gofrs/uuid"
 )
 
 var ed EventMap[dd]
@@ -14,7 +16,7 @@ var ctxGlobal context.Context
 var ctxGlobalCancel context.CancelFunc
 var testCryptKey = log.RedactedString("aPSIX6K3yw6cAWDQHGPjmhuOswuRibjyLLnd91ojdK0=")
 
-var STREAM_NAME = "TestServiceStoreAndStream_" //+ uuid.New().String()
+var STREAM_NAME = "TestServiceStoreAndStream_" + uuid.Must(uuid.NewV7()).String()
 
 type dd struct {
 	Id   int    `json:"id"`
@@ -31,7 +33,7 @@ func TestPre(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	ctxGlobal, ctxGlobalCancel = context.WithCancel(context.Background())
-	store, err := inmemory.Init(STREAM_NAME, ctxGlobal)
+	store, err := ondisk.Init(STREAM_NAME, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return

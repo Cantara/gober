@@ -13,7 +13,6 @@ import (
 	log "github.com/cantara/bragi/sbragi"
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store"
 )
 
@@ -34,9 +33,9 @@ type storeEvent struct {
 
 // stream Need to add a way to not store multiple events with the same id in the same stream.
 type stream struct {
-	db       *os.File
-	len      *atomic.Int64
-	dbLock   *sync.Mutex
+	db  *os.File
+	len *atomic.Int64
+	//dbLock   *sync.Mutex
 	newData  *sync.Cond
 	position uint64
 }
@@ -48,148 +47,186 @@ type Stream struct {
 	ctx       context.Context
 }
 
-func Init(name string, ctx context.Context) (es *Stream, err error) {
+func Init(name string, ctx context.Context) (s *Stream, err error) {
 	writeChan := make(chan store.WriteEvent)
 	os.Mkdir("streams", 0750)
 	f, err := os.OpenFile(fmt.Sprintf("streams/%s", name), os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0640)
 	if err != nil {
 		return
 	}
-	es = &Stream{
+	s = &Stream{
 		data: stream{
-			db:      f,
-			len:     &atomic.Int64{},
-			dbLock:  &sync.Mutex{},
+			db:  f,
+			len: &atomic.Int64{},
+			//dbLock:  &sync.Mutex{},
 			newData: sync.NewCond(&sync.Mutex{}),
 		},
 		name:      name,
 		writeChan: writeChan,
 		ctx:       ctx,
 	}
-	go func() {
-		stream := json.NewEncoder(es.data.db)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e := <-writeChan:
-				func() {
-					es.data.dbLock.Lock()
-					defer es.data.dbLock.Unlock()
-					defer func() {
-						if e.Status != nil {
-							close(e.Status)
-						}
-					}()
-					se := storeEvent{
-						Event:    e.Event,
-						Position: uint64(es.data.len.Add(1)),
-						Created:  time.Now(),
-					}
-					err := stream.Encode(se)
-					if err != nil {
-						log.WithError(err).Error("while writing event to file")
-						if e.Status != nil {
-							e.Status <- event.WriteStatus{
-								Error: err,
-							}
-						}
-						return
-					}
-					es.data.position = se.Position
-					if e.Status != nil {
-						e.Status <- event.WriteStatus{
-							Time:     se.Created,
-							Position: se.Position,
-						}
-					}
-
-					es.data.newData.Broadcast()
-				}()
-			}
-		}
-	}()
+	go writeStrem(s, writeChan)
 	return
 }
 
-func (es *Stream) Write() chan<- store.WriteEvent {
-	return es.writeChan
+func writeStrem(s *Stream, writes <-chan store.WriteEvent) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		log.WithError(fmt.Errorf("%v", r)).Error("recovering write stream", "stream", s.name)
+		writeStrem(s, writes)
+	}()
+	stream := json.NewEncoder(s.data.db)
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case e := <-writes:
+			func() {
+				defer func() {
+					if e.Status != nil {
+						close(e.Status)
+					}
+				}()
+				se := storeEvent{
+					Event:    e.Event,
+					Position: uint64(s.data.len.Add(1)),
+					Created:  time.Now(),
+				}
+				err := stream.Encode(se)
+				if err != nil {
+					log.WithError(err).Error("while writing event to file")
+					if e.Status != nil {
+						e.Status <- store.WriteStatus{
+							Error: err,
+						}
+					}
+					return
+				}
+				s.data.position = se.Position
+				if e.Status != nil {
+					e.Status <- store.WriteStatus{
+						Time:     se.Created,
+						Position: se.Position,
+					}
+				}
+
+				s.data.newData.Broadcast()
+			}()
+		}
+	}
 }
 
-func (es *Stream) Stream(from store.StreamPosition, ctx context.Context) (out <-chan store.ReadEvent, err error) {
-	db, err := os.OpenFile(es.data.db.Name(), os.O_RDONLY, 0640)
-	if err != nil {
-		return
-	}
+func (s *Stream) Write() chan<- store.WriteEvent {
+	return s.writeChan
+}
+
+func (s *Stream) Stream(from store.StreamPosition, ctx context.Context) (out <-chan store.ReadEvent, err error) {
 	eventChan := make(chan store.ReadEvent, 2)
 	out = eventChan
-	go func() {
-		defer close(eventChan)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-es.ctx.Done():
-				return
-			default:
+	go readStream(s, eventChan, uint64(from), ctx)
+	return
+}
+
+func readStream(s *Stream, events chan<- store.ReadEvent, position uint64, ctx context.Context) {
+	exit := false
+	defer func() {
+		if exit {
+			close(events)
+		}
+	}()
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		log.WithError(fmt.Errorf("%v", r)).Error("recovering read stream", "stream", s.name)
+		readStream(s, events, position, ctx)
+	}()
+	db, err := os.OpenFile(fmt.Sprintf("streams/%s", s.name), os.O_RDONLY, 0640)
+	//db, err := os.OpenFile(es.data.db.Name(), os.O_RDONLY, 0640)
+	if err != nil {
+		log.WithError(err).Fatal("while opening stream file")
+		return
+	}
+	defer db.Close()
+	stream := json.NewDecoder(db)
+	select {
+	case <-ctx.Done():
+		exit = true
+		return
+	case <-s.ctx.Done():
+		exit = true
+		return
+	default:
+	}
+	//position := uint64(from)
+	if position == uint64(store.STREAM_END) {
+		position = uint64(s.data.len.Load())
+	}
+	readTo := uint64(0)
+	var se storeEvent
+	for readTo < position {
+		err := stream.Decode(&se)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				time.Sleep(time.Millisecond * 250)
+				continue
 			}
-			position := uint64(from)
-			if from == store.STREAM_END {
-				position = uint64(es.data.len.Load())
-			}
-			readTo := uint64(0)
-			stream := json.NewDecoder(db)
-			var se storeEvent
-			for readTo < position {
+			log.WithError(err).Fatal("while unmarshalling event from store catchup", "name", s.name)
+		}
+		readTo = se.Position
+	}
+	for !exit {
+		log.Trace("starting new reader loop", "name", s.name)
+		select {
+		case <-ctx.Done():
+			exit = true
+			return
+		case <-s.ctx.Done():
+			exit = true
+			return
+		default:
+			for stream.More() {
+				log.Trace("has more", "name", s.name)
 				err := stream.Decode(&se)
 				if err != nil {
+					/*Should not happen
 					if errors.Is(err, io.EOF) {
 						time.Sleep(time.Millisecond * 250)
 						continue
 					}
-					log.WithError(err).Fatal("while unmarshalling event from store", "name", es.name)
+					*/
+					log.WithError(err).Fatal("while unmarshalling event from store", "name", s.name)
 				}
-				readTo = se.Position
-			}
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-es.ctx.Done():
-					return
-				default:
-					err := stream.Decode(&se)
-					if err != nil {
-						if errors.Is(err, io.EOF) {
-							time.Sleep(time.Millisecond * 250)
-							continue
-						}
-						log.WithError(err).Fatal("while unmarshalling event from store", "name", es.name)
-					}
-					eventChan <- store.ReadEvent{
-						Event:    se.Event,
-						Position: se.Position,
-						Created:  se.Created,
-					}
-					readTo = se.Position
-					//Did read more here before updating. Could continue to loop over until EOF instead
-					if readTo >= uint64(es.data.len.Load()) {
-						es.data.newData.L.Lock()
-						es.data.newData.Wait()
-						es.data.newData.L.Unlock()
-					}
+				events <- store.ReadEvent{
+					Event:    se.Event,
+					Position: se.Position,
+					Created:  se.Created,
 				}
+				position = se.Position
 			}
+			log.Trace("empty checking if there has come new data", "name", s.name, "p", position, "dl", s.data.len.Load(), "dp", s.data.position)
+			if position >= uint64(s.data.len.Load()) {
+				log.Trace("waiting for new data", "name", s.name)
+				s.data.newData.L.Lock()
+				s.data.newData.Wait()
+				s.data.newData.L.Unlock()
+			} else {
+				time.Sleep(time.Millisecond * 250)
+			}
+			stream = json.NewDecoder(db)
 		}
-	}()
-	return
+	}
 }
 
-func (es *Stream) Name() string {
-	return es.name
+func (s *Stream) Name() string {
+	return s.name
 }
 
-func (es *Stream) End() (pos uint64, err error) {
-	pos = es.data.position
+func (s *Stream) End() (pos uint64, err error) {
+	pos = s.data.position
 	return
 }

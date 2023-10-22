@@ -64,6 +64,8 @@ func executeFunc(d dd) bool {
 }
 
 func TestInit(t *testing.T) {
+	//dl, _ := log.NewDebugLogger()
+	//dl.SetDefault()
 	ct = t
 	ctxGlobal, ctxGlobalCancel = context.WithCancel(context.Background())
 	store, err := inmemory.Init(STREAM_NAME, ctxGlobal)

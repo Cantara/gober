@@ -1,17 +1,17 @@
 package store
 
 import (
-	"github.com/cantara/gober/stream/event"
-	"github.com/gofrs/uuid"
 	"math"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 type Event struct {
-	Id       uuid.UUID  `json:"id"`
-	Type     event.Type `json:"type"`
-	Data     []byte     `json:"data"`
-	Metadata []byte     `json:"metadata"`
+	Id       uuid.UUID `json:"id"`
+	Type     string    `json:"type"`
+	Data     []byte    `json:"data"`
+	Metadata []byte    `json:"metadata"`
 }
 
 type ReadEvent struct {
@@ -24,7 +24,13 @@ type ReadEvent struct {
 type WriteEvent struct {
 	Event
 
-	Status chan<- event.WriteStatus
+	Status chan<- WriteStatus
+}
+
+type WriteStatus struct {
+	Error    error
+	Position uint64
+	Time     time.Time
 }
 
 type StreamPosition uint64

@@ -41,11 +41,11 @@ func TestStore(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	status := make(chan event.WriteStatus, 1)
+	status := make(chan store.WriteStatus, 1)
 	es.Write() <- store.WriteEvent{
 		Event: store.Event{
 			Id:   uuid.Must(uuid.NewV7()),
-			Type: event.Create,
+			Type: string(event.Created),
 			Data: bytes,
 		},
 		Status: status,
@@ -75,7 +75,7 @@ func TestStream(t *testing.T) {
 		return
 	}
 	e := <-s
-	if e.Type != event.Create {
+	if e.Type != string(event.Created) {
 		t.Error(fmt.Errorf("missmatch inMemEvent types"))
 		return
 	}
@@ -98,11 +98,11 @@ func TestStoreMultiple(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		status := make(chan event.WriteStatus, 1)
+		status := make(chan store.WriteStatus, 1)
 		es.Write() <- store.WriteEvent{
 			Event: store.Event{
 				Id:   uuid.Must(uuid.NewV7()),
-				Type: event.Create,
+				Type: string(event.Created),
 				Data: bytes,
 			},
 			Status: status,
@@ -139,7 +139,7 @@ func TestStreamMultiple(t *testing.T) {
 			t.Errorf("previous transaction id was bigger than current position id. %d >= %d", position, e.Position)
 		}
 		fmt.Println(e)
-		if e.Type != event.Create {
+		if e.Type != string(event.Created) {
 			t.Error(fmt.Errorf("missmatch inMemEvent types"))
 			return
 		}
@@ -180,11 +180,11 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		return
 	}
 	for i := 0; i < b.N; i++ {
-		status := make(chan event.WriteStatus, 1)
+		status := make(chan store.WriteStatus, 1)
 		es.Write() <- store.WriteEvent{
 			Event: store.Event{
 				Id:   uuid.Must(uuid.NewV7()),
-				Type: event.Create,
+				Type: string(event.Created),
 				Data: bytes,
 			},
 			Status: status,
@@ -205,7 +205,7 @@ func BenchmarkStoreAndStream(b *testing.B) {
 	}
 	for i := 0; i < b.N; i++ {
 		e := <-stream
-		if e.Type != event.Create {
+		if e.Type != string(event.Created) {
 			b.Error(fmt.Errorf("missmatch inMemEvent types"))
 			return
 		}

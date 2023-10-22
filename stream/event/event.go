@@ -3,7 +3,13 @@ package event
 import (
 	"context"
 	"time"
+
+	log "github.com/cantara/bragi/sbragi"
+	"github.com/cantara/gober/stream/event/store"
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigDefault
 
 type Metadata struct {
 	Stream    string         `json:"stream"`
@@ -36,49 +42,81 @@ type ReadEventWAcc[T any] struct {
 }
 
 type WriteEvent[T any] struct {
-	Event[T]
-
-	Status chan<- WriteStatus
-}
-
-type WriteStatus struct {
-	Error    error
-	Position uint64
-	Time     time.Time
+	event  Event[T]
+	Status chan store.WriteStatus
 }
 
 type WriteEventReadStatus[T any] interface {
-	Event() Event[T]
-	Done() <-chan WriteStatus
-	Close(WriteStatus)
+	Event() *Event[T]
+	Done() <-chan store.WriteStatus
+	Close(store.WriteStatus)
+	Store() *store.WriteEvent
+	StatusChan() chan store.WriteStatus
 }
 
-func NewWriteEvent[T any](e Event[T]) WriteEventReadStatus[T] {
-	return &writeEvent[T]{
-		event: e,
-		done:  make(chan WriteStatus, 1),
+func Map[OT, NT any](e WriteEventReadStatus[OT], f func(OT) NT) WriteEventReadStatus[NT] {
+	return &WriteEvent[NT]{
+		event: Event[NT]{
+			Type:     e.Event().Type,
+			Data:     f(e.Event().Data),
+			Metadata: e.Event().Metadata,
+		},
+		Status: e.StatusChan(),
 	}
 }
 
-type writeEvent[T any] struct {
-	event Event[T]
-	done  chan WriteStatus
+func NewWriteEvent[T any](e Event[T]) WriteEventReadStatus[T] { //Dont think i like this
+	return &WriteEvent[T]{
+		event:  e,
+		Status: make(chan store.WriteStatus, 1),
+	}
 }
 
-func (e *writeEvent[T]) Event() Event[T] {
-	return e.event
+func (e *WriteEvent[T]) Event() *Event[T] {
+	return &e.event
 }
 
-func (e *writeEvent[T]) Done() <-chan WriteStatus {
-	return e.done
+func (e *WriteEvent[T]) Done() <-chan store.WriteStatus {
+	return e.Status
 }
 
-func (e *writeEvent[T]) Close(status WriteStatus) {
-	if e.done == nil {
+func (e *WriteEvent[T]) Close(status store.WriteStatus) {
+	if e.Status == nil {
 		return
 	}
-	e.done <- status
-	close(e.done)
+	e.Status <- status
+	close(e.Status)
+}
+
+func (e *WriteEvent[T]) StatusChan() chan store.WriteStatus {
+	return e.Status
+}
+
+func (e *WriteEvent[T]) Store() *store.WriteEvent {
+	mByte, err := json.Marshal(e.event.Metadata)
+	if err != nil {
+		log.WithError(err).Error("while marshaling metadata")
+		e.Close(store.WriteStatus{
+			Error: err,
+		})
+		return nil
+	}
+	dByte, err := json.Marshal(e.event.Data)
+	if err != nil {
+		log.WithError(err).Error("while marshaling data")
+		e.Close(store.WriteStatus{
+			Error: err,
+		})
+		return nil
+	}
+	return &store.WriteEvent{
+		Event: store.Event{
+			Type:     string(e.event.Type),
+			Data:     dByte,
+			Metadata: mByte,
+		},
+		Status: e.Status,
+	}
 }
 
 type ByteEvent Event[[]byte]

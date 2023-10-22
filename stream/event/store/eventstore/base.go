@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream/event"
-	"time"
 
 	//"github.com/EventStore/EventStore-Client-Go/esdb/v2"
 	"github.com/EventStore/EventStore-Client-Go/esdb"
@@ -62,7 +63,7 @@ func NewStream(c *Client, stream string, ctx context.Context) (s *Stream, err er
 				return
 			case e := <-writeChan:
 				i := 0
-				var statusChans []chan<- event.WriteStatus
+				var statusChans []chan<- store.WriteStatus
 				events[i] = esdb.EventData{
 					EventID:     e.Id,
 					ContentType: esdb.BinaryContentType,
@@ -101,7 +102,7 @@ func NewStream(c *Client, stream string, ctx context.Context) (s *Stream, err er
 
 				log.Info("writing events", "number of events", i)
 				wr, err := s.c.c.AppendToStream(ctx, s.name, esdb.AppendToStreamOptions{}, events[:i]...)
-				writeStatus := event.WriteStatus{
+				writeStatus := store.WriteStatus{
 					Error: err,
 					Time:  time.Now(),
 				}
@@ -126,7 +127,7 @@ func (s *Stream) Stream(from store.StreamPosition, ctx context.Context) (out <-c
 
 	eventChan := make(chan store.ReadEvent, 10)
 	out = eventChan
-	backoff := time.Duration(1)
+	backoff := time.Millisecond
 	switch from {
 	case store.STREAM_START:
 		esFrom = esdb.Start{}
@@ -145,6 +146,11 @@ func (s *Stream) Stream(from store.StreamPosition, ctx context.Context) (out <-c
 				return
 			default:
 				s.readStream(&esFrom, backoff, eventChan, ctx)
+				if backoff > time.Second {
+					log.Fatal("unable to connect")
+				}
+				time.Sleep(backoff)
+				backoff = backoff * 2
 			}
 		}
 	}()
@@ -154,7 +160,8 @@ func (s *Stream) Stream(from store.StreamPosition, ctx context.Context) (out <-c
 func (s *Stream) readStream(esFrom *esdb.StreamPosition, backoff time.Duration, eventChan chan<- store.ReadEvent, ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("recovered", "error", r)
+			log.Error("recovered", "backoff", backoff.String(), "error", r)
+			time.Sleep(backoff)
 			s.readStream(esFrom, backoff*2, eventChan, ctx)
 		}
 	}()
@@ -163,9 +170,9 @@ func (s *Stream) readStream(esFrom *esdb.StreamPosition, backoff time.Duration, 
 	})
 	if err != nil {
 		log.WithError(err).Debug("while subscribing to stream ", s.name)
-		time.Sleep(backoff * time.Second)
 		return
 	}
+	backoff = time.Millisecond * 100
 	defer func() {
 		log.WithError(stream.Close()).Debug("Closing stream")
 	}() // Needed to not evaluate stream.Close() before defer is executed
@@ -192,7 +199,7 @@ func (s *Stream) readStream(esFrom *esdb.StreamPosition, backoff time.Duration, 
 		es := store.ReadEvent{
 			Event: store.Event{
 				Id:       e.EventID,
-				Type:     event.TypeFromString(e.EventType),
+				Type:     string(event.TypeFromString(e.EventType)),
 				Data:     e.Data,
 				Metadata: e.UserMetadata,
 			},

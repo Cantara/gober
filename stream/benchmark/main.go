@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"flag"
+	"sync"
+	"time"
+
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream"
 	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store/eventstore"
 	"github.com/cantara/gober/stream/event/store/inmemory"
 	"github.com/gofrs/uuid"
-	"sync"
-	"time"
 )
 
 var STREAM_NAME = "BenchmarkConsumer_" + uuid.Must(uuid.NewV7()).String()
@@ -61,7 +62,7 @@ func main() {
 			return
 		}
 	}
-	c, err := stream.Init(pers, ctx)
+	c, err := stream.Init[[]byte](pers, ctx)
 	if err != nil {
 		log.WithError(err).Fatal("while creating consumer")
 		return
@@ -99,15 +100,13 @@ func main() {
 			"duration", dur, "event size (B)", eventSize, "events / second", eps, "MB/s", mbps)
 	}(time.Now())
 	//writeEventStream := c.Write()
-	we := event.ByteWriteEvent{
-		Event: event.Event[[]byte]{
-			Type: event.Create,
-			Data: make([]byte, eventSize),
-			Metadata: event.Metadata{
-				Extra: map[string]any{"extra": "extra metadata test"},
-			},
+	we := event.NewWriteEvent(event.Event[[]byte]{
+		Type: event.Created,
+		Data: make([]byte, eventSize),
+		Metadata: event.Metadata{
+			Extra: map[string]any{"extra": "extra metadata test"},
 		},
-	}
+	})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

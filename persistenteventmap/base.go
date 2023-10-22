@@ -96,7 +96,7 @@ func Init[DT any](s stream.Stream, dataTypeName, dataTypeVersion string, p strea
 			case <-ctx.Done():
 				return
 			case e := <-eventChan:
-				if e.Type == event.Delete {
+				if e.Type == event.Deleted {
 					err := db.Update(func(txn *badger.Txn) error {
 						err = txn.Delete([]byte(getKey(e.Data)))
 						if err != nil {
@@ -240,9 +240,9 @@ func (m *mapData[DT]) Exists(key string) (exists bool) {
 
 func (m *mapData[DT]) createEvent(data DT) (e event.Event[DT], err error) {
 	key := m.getKey(data)
-	eventType := event.Create
+	eventType := event.Created
 	if m.Exists(key) {
-		eventType = event.Update
+		eventType = event.Updated
 	}
 
 	e = event.Event[DT]{
@@ -259,7 +259,7 @@ func (m *mapData[DT]) createEvent(data DT) (e event.Event[DT], err error) {
 
 func (m *mapData[DT]) Delete(data DT) (err error) {
 	e := event.Event[DT]{
-		Type: event.Delete,
+		Type: event.Deleted,
 		Data: data,
 		Metadata: event.Metadata{
 			Version:  m.dataTypeVersion,

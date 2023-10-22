@@ -7,24 +7,24 @@ import (
 type Type string
 
 const (
-	Create  Type = "create"
-	Update  Type = "update"
-	Delete  Type = "delete"
+	Created Type = "created"
+	Updated Type = "updated"
+	Deleted Type = "deleted"
 	Invalid Type = "invalid"
 )
 
 func AllTypes() []Type {
-	return []Type{Create, Update, Delete}
+	return []Type{Created, Updated, Deleted}
 }
 
 func TypeFromString(s string) Type {
 	switch s {
-	case string(Create):
-		return Create
-	case string(Update):
-		return Update
-	case string(Delete):
-		return Delete
+	case string(Created):
+		return Created
+	case string(Updated):
+		return Updated
+	case string(Deleted):
+		return Deleted
 	}
 	return Invalid
 }

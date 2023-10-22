@@ -4,16 +4,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/gofrs/uuid"
 
+	"github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store"
 	"github.com/cantara/gober/stream/event/store/inmemory"
+	"github.com/cantara/gober/stream/event/store/ondisk"
 )
 
-var es FilteredStream
+var es FilteredStream[[]byte]
 var ctxGlobal context.Context
 var ctxGlobalCancel context.CancelFunc
 
@@ -29,13 +32,15 @@ type dd struct {
 }
 
 func TestInit(t *testing.T) {
+	//log, _ := sbragi.NewDebugLogger()
+	//log.SetDefault()
 	ctxGlobal, ctxGlobalCancel = context.WithCancel(context.Background())
-	pers, err := inmemory.Init(STREAM_NAME, ctxGlobal)
+	pers, err := ondisk.Init(STREAM_NAME, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	est, err := Init(pers, ctxGlobal)
+	est, err := Init[[]byte](pers, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
@@ -59,8 +64,9 @@ func TestStoreOrder(t *testing.T) {
 			t.Error(err)
 			return
 		}
+		sbragi.Debug(string(bdata))
 		e, err := event.NewBuilder().
-			WithType(event.Create).
+			WithType(event.Created).
 			WithData(bdata).
 			WithMetadata(event.Metadata{
 				Extra: map[string]any{"extra": meta.Extra},
@@ -70,7 +76,9 @@ func TestStoreOrder(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		writer <- e
+		we := event.NewWriteEvent[[]byte](*e.Event())
+		writer <- we
+		<-we.Done()
 		/*
 			_, err = es.Store(e)
 			if err != nil {
@@ -85,7 +93,7 @@ func TestStoreOrder(t *testing.T) {
 func TestStreamOrder(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream, err := es.Stream([]event.Type{event.Create}, store.STREAM_START, ReadEventType(event.Create), ctx)
+	stream, err := es.Stream([]event.Type{event.Created}, store.STREAM_START, ReadEventType(event.Created), ctx)
 	if err != nil {
 		t.Error(err)
 		return
@@ -94,11 +102,15 @@ func TestStreamOrder(t *testing.T) {
 		e := <-stream
 		var data dd
 		err = json.Unmarshal(e.Data, &data)
+		sbragi.WithError(err).Debug("stream data", "i", i, "event", e, "data", data)
 		if err != nil {
-			t.Error(err)
+			log.Fatal("I AM HIT!")
+			t.Error(err, string(e.Data))
+			t.Fail()
+			t.Fatal(err)
 			return
 		}
-		if e.Type != event.Create {
+		if e.Type != event.Created {
 			t.Error(fmt.Errorf("missmatch event types"))
 			return
 		}
@@ -137,7 +149,7 @@ func TestStoreDuplicate(t *testing.T) {
 			return
 		}
 		e, err := event.NewBuilder().
-			WithType(event.Create).
+			WithType(event.Created).
 			WithData(bdata).
 			WithMetadata(event.Metadata{
 				Extra: map[string]any{"extra": meta.Extra},
@@ -147,7 +159,7 @@ func TestStoreDuplicate(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		_, err = es.Store(event.ByteEvent(e.Event))
+		_, err = es.Store(*e.Event())
 		if err != nil {
 			t.Error(err)
 			return
@@ -159,7 +171,7 @@ func TestStoreDuplicate(t *testing.T) {
 func TestStreamDuplicate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream, err := es.Stream([]event.Type{event.Create}, store.STREAM_START, ReadEventType(event.Create), ctx)
+	stream, err := es.Stream([]event.Type{event.Created}, store.STREAM_START, ReadEventType(event.Created), ctx)
 	if err != nil {
 		t.Error(err)
 		return
@@ -172,7 +184,7 @@ func TestStreamDuplicate(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if e.Type != event.Create {
+		if e.Type != event.Created {
 			t.Error(fmt.Errorf("missmatch event types"))
 			return
 		}
@@ -209,13 +221,12 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		b.Error(err)
 		return
 	}
-	est, err := Init(pers, ctx)
+	est, err := Init[[]byte](pers, ctx)
 	if err != nil {
 		b.Error(err)
 		return
 	}
-	status := make(chan event.WriteStatus, b.N)
-	events := make([]event.ByteWriteEvent, b.N)
+	events := make([]event.WriteEventReadStatus[[]byte], b.N)
 	for i := 0; i < b.N; i++ {
 		data := dd{
 			Id:   i,
@@ -229,8 +240,8 @@ func BenchmarkStoreAndStream(b *testing.B) {
 			b.Error(err)
 			return
 		}
-		events[i], err = event.NewBuilder().
-			WithType(event.Create).
+		e, err := event.NewBuilder().
+			WithType(event.Created).
 			WithData(bdata).
 			WithMetadata(event.Metadata{
 				Extra: map[string]any{"extra": meta.Extra},
@@ -240,12 +251,12 @@ func BenchmarkStoreAndStream(b *testing.B) {
 			b.Error(err)
 			return
 		}
-		events[i].Status = status
+		events[i] = event.NewWriteEvent[[]byte](*e.Event())
 	}
 	writer := est.Write()
 	for i := 0; i < b.N; i++ {
 		writer <- events[i]
-		<-status
+		<-events[i].Done()
 		/*
 			_, err = est.Store(events[i].Event)
 			if err != nil {
@@ -254,19 +265,19 @@ func BenchmarkStoreAndStream(b *testing.B) {
 			}
 		*/
 	}
-	stream, err := est.Stream([]event.Type{event.Create}, store.STREAM_START, ReadAll(), ctx)
+	stream, err := est.Stream([]event.Type{event.Created}, store.STREAM_START, ReadAll(), ctx)
 	if err != nil {
 		b.Error(err)
 		return
 	}
 	for i := 0; i < b.N; i++ {
 		e := <-stream
-		if e.Type != event.Create {
+		if e.Type != event.Created {
 			b.Error(fmt.Errorf("missmatch event types"))
 			return
 		}
-		if !bytes.Equal(e.Data, events[i].Data) {
-			b.Error(fmt.Errorf("missmatch event data, %v != %v", e.Data, events[i].Data))
+		if !bytes.Equal(e.Data, events[i].Event().Data) {
+			b.Error(fmt.Errorf("missmatch event data, %v != %v", e.Data, events[i].Event().Data))
 			return
 		}
 	}

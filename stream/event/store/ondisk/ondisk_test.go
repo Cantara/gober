@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,12 +22,17 @@ var (
 )
 
 var STREAM_NAME = "TestStoreAndStream_" + uuid.Must(uuid.NewV7()).String()
+var position = store.STREAM_START
 
 func TestPreInit(t *testing.T) {
 	os.RemoveAll("streams")
 }
 
 func TestInit(t *testing.T) {
+	/*
+		dl, _ := log.NewDebugLogger()
+		dl.SetDefault()
+	*/
 	ctx, cancel = context.WithCancel(context.Background())
 	var err error
 	es, err = Init(STREAM_NAME, ctx)
@@ -48,11 +54,11 @@ func TestStore(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	status := make(chan event.WriteStatus, 1)
+	status := make(chan store.WriteStatus, 1)
 	es.Write() <- store.WriteEvent{
 		Event: store.Event{
 			Id:   uuid.Must(uuid.NewV7()),
-			Type: event.Create,
+			Type: string(event.Created),
 			Data: bytes,
 		},
 		Status: status,
@@ -76,13 +82,14 @@ func TestStore(t *testing.T) {
 func TestStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := es.Stream(store.STREAM_START, ctx)
+	s, err := es.Stream(position, ctx)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	e := <-s
-	if e.Type != event.Create {
+	position = store.StreamPosition(e.Position)
+	if e.Type != string(event.Created) {
 		t.Error(fmt.Errorf("missmatch inMemEvent types"))
 		return
 	}
@@ -96,7 +103,7 @@ func TestStream(t *testing.T) {
 func TestStoreMultiple(t *testing.T) {
 	data := make(map[string]interface{})
 
-	for i := 2; i < 11; i++ {
+	for i := 2; i < 12; i++ {
 		data["id"] = i
 		data["name"] = "test"
 
@@ -105,11 +112,11 @@ func TestStoreMultiple(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		status := make(chan event.WriteStatus, 1)
+		status := make(chan store.WriteStatus, 1)
 		es.Write() <- store.WriteEvent{
 			Event: store.Event{
 				Id:   uuid.Must(uuid.NewV7()),
-				Type: event.Create,
+				Type: string(event.Created),
 				Data: bytes,
 			},
 			Status: status,
@@ -132,21 +139,22 @@ func TestStoreMultiple(t *testing.T) {
 }
 
 func TestStreamMultiple(t *testing.T) {
-	s, err := es.Stream(store.STREAM_START, ctx)
+	s, err := es.Stream(position, ctx)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	var position uint64
+	prevPos := uint64(position)
 	for i := 0; i < 10; i++ {
 		e := <-s
-		if position < e.Position {
-			position = e.Position
+		position = store.StreamPosition(e.Position)
+		if prevPos < e.Position {
+			prevPos = e.Position
 		} else {
-			t.Errorf("previous transaction id was bigger than current position id. %d >= %d", position, e.Position)
+			t.Errorf("previous transaction id was bigger than current position id. %d >= %d", prevPos, e.Position)
 		}
 		fmt.Println(e)
-		if e.Type != event.Create {
+		if e.Type != string(event.Created) {
 			t.Error(fmt.Errorf("missmatch inMemEvent types"))
 			return
 		}
@@ -158,13 +166,50 @@ func TestStreamMultiple(t *testing.T) {
 	return
 }
 
+func TestStoreAndStream(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s, err := es.Stream(position, ctx)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		<-s
+	}(&wg)
+	data := make(map[string]interface{})
+	data["id"] = 1
+	data["name"] = "test"
+	data["data"] = make([]byte, MB*6)
+
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	status := make(chan store.WriteStatus, 1)
+	es.Write() <- store.WriteEvent{
+		Event: store.Event{
+			Id:   uuid.Must(uuid.NewV7()),
+			Type: string(event.Created),
+			Data: bytes,
+		},
+		Status: status,
+	}
+	<-status
+	wg.Wait()
+}
+
 func TestTeardown(t *testing.T) {
 	cancel()
 }
 
 func BenchmarkStoreAndStream(b *testing.B) {
 	// log.SetLevel(log.ERROR) TODO: should add to sbragi
-	log.Debug("b.N ", b.N)
+	log.Debug("benchmark start", "b.N ", b.N)
 	data := make(map[string]interface{})
 	data["id"] = 1
 	data["name"] = "test"
@@ -187,11 +232,11 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		return
 	}
 	for i := 0; i < b.N; i++ {
-		status := make(chan event.WriteStatus, 1)
+		status := make(chan store.WriteStatus, 1)
 		es.Write() <- store.WriteEvent{
 			Event: store.Event{
 				Id:   uuid.Must(uuid.NewV7()),
-				Type: event.Create,
+				Type: string(event.Created),
 				Data: bytes,
 			},
 			Status: status,
@@ -212,11 +257,11 @@ func BenchmarkStoreAndStream(b *testing.B) {
 	}
 	for i := 0; i < b.N; i++ {
 		e := <-stream
-		if e.Type != event.Create {
+		if e.Type != string(event.Created) {
 			b.Error(fmt.Errorf("missmatch inMemEvent types"))
 			return
 		}
-		if e.Id.String() == "" {
+		if e.Id.String() == "" { //This is wrong, Not checking anything
 			b.Error(fmt.Errorf("missing inMemEvent id"))
 			return
 		}

@@ -91,22 +91,21 @@ func Init[DT any](s stream.Stream, dataTypeName, dataTypeVersion string, p strea
 						return
 					case <-time.After(e.Data.Metadata.After.Sub(time.Now())):
 					}
-					esTasks.Write() <- event.WriteEvent[tm[DT]]{
-						Event: event.Event[tm[DT]]{
-							Data: e.Data,
-							Metadata: event.Metadata{
-								Version:  t.eventTypeVersion,
-								DataType: t.eventTypeName + "_executor",
-								Key:      crypto.SimpleHash(e.Data.Metadata.Id.String()),
-							},
+					we := event.NewWriteEvent(event.Event[tm[DT]]{
+						Type: event.Created,
+						Data: e.Data,
+						Metadata: event.Metadata{
+							Version:  t.eventTypeVersion,
+							DataType: t.eventTypeName + "_executor",
+							Key:      crypto.SimpleHash(e.Data.Metadata.Id.String()),
 						},
+					})
+					esTasks.Write() <- we
+					ws := <-we.Done()
+					if ws.Error != nil {
+						log.WithError(ws.Error).Error("while creating scheduled task")
+						return
 					}
-					/*
-						if err != nil {
-							log.WithError(err).Error("while creating scheduled task")
-							return
-						}
-					*/
 					e.Acc()
 				}()
 			}
@@ -173,7 +172,7 @@ func (t *scheduledtasks[DT]) Create(a time.Time, i time.Duration, dt DT) (err er
 }
 
 func (t *scheduledtasks[DT]) create(id uuid.UUID, a time.Time, i time.Duration, dt DT) (err error) {
-	e, err := t.event(event.Create, tm[DT]{
+	e, err := t.event(event.Created, tm[DT]{
 		Task: dt,
 		Metadata: TaskMetadata{
 			After:    a,
@@ -184,11 +183,10 @@ func (t *scheduledtasks[DT]) create(id uuid.UUID, a time.Time, i time.Duration, 
 	if err != nil {
 		return
 	}
-	t.es.Write() <- event.WriteEvent[tm[DT]]{
-		Event: e,
-	}
-	//_, err = t.es.Store(e)
-	return
+	we := event.NewWriteEvent(e)
+	t.es.Write() <- we
+	ws := <-we.Done()
+	return ws.Error
 }
 
 func (t *scheduledtasks[DT]) Tasks() (tasks []TaskMetadata) {

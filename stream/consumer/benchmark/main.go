@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream"
 	"github.com/cantara/gober/stream/consumer"
 	"github.com/cantara/gober/stream/event"
 	"github.com/cantara/gober/stream/event/store/eventstore"
 	"github.com/gofrs/uuid"
-	"sync"
-	"time"
 )
 
 var STREAM_NAME = "BenchmarkConsumer_" + uuid.Must(uuid.NewV7()).String()
@@ -77,7 +78,7 @@ func main() {
 	}(time.Now())
 	//writeEventStream := c.Write()
 	we := event.NewWriteEvent(event.Event[[]byte]{
-		Type: event.Create,
+		Type: event.Created,
 		Data: make([]byte, eventSize),
 		Metadata: event.Metadata{
 			Extra: map[string]any{"extra": "extra metadata test"},

@@ -5,7 +5,7 @@ import (
 )
 
 type Consumer[T any] interface {
-	Write() chan<- event.WriteEvent[T]
+	Write() chan<- event.WriteEventReadStatus[T]
 	Stream() <-chan event.ReadEventWAcc[T]
 	End() (pos uint64, err error)
 	Name() string

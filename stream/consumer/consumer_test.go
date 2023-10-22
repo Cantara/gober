@@ -3,11 +3,13 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream"
 	"github.com/cantara/gober/stream/event/store/inmemory"
-	"sync"
-	"testing"
+	"github.com/cantara/gober/stream/event/store/ondisk"
 
 	"github.com/gofrs/uuid"
 
@@ -38,7 +40,7 @@ func cryptKeyProvider(_ string) log.RedactedString {
 
 func TestInit(t *testing.T) {
 	ctxGlobal, ctxGlobalCancel = context.WithCancel(context.Background())
-	pers, err := inmemory.Init(STREAM_NAME, ctxGlobal)
+	pers, err := ondisk.Init(STREAM_NAME, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
@@ -68,7 +70,7 @@ func TestStoreOrder(t *testing.T) {
 			Extra: "extra metadata test",
 		}
 		e := event.Event[dd]{
-			Type: event.Create,
+			Type: event.Created,
 			Data: data,
 			Metadata: event.Metadata{
 				Extra: map[string]any{"extra": meta.Extra},
@@ -100,7 +102,7 @@ func TestStoreOrder(t *testing.T) {
 func TestStreamOrder(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		e := events[i]
-		if e.Type != event.Create {
+		if e.Type != event.Created {
 			t.Error(fmt.Errorf("missmatch event types"))
 			return
 		}
@@ -152,7 +154,7 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			e := <-readEventStream
 			e.Acc()
-			if e.Type != event.Create {
+			if e.Type != event.Created {
 				b.Error(fmt.Errorf("missmatch event types"))
 				return
 			}
@@ -173,7 +175,7 @@ func BenchmarkStoreAndStream(b *testing.B) {
 			}
 		*/
 		we := event.NewWriteEvent(event.Event[[]byte]{
-			Type: event.Create,
+			Type: event.Created,
 			Data: make([]byte, 1024),
 			Metadata: event.Metadata{
 				Extra: map[string]any{"extra": "extra metadata test"},

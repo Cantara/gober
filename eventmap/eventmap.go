@@ -3,6 +3,7 @@ package eventmap
 import (
 	"context"
 	"fmt"
+
 	log "github.com/cantara/bragi/sbragi"
 	"github.com/cantara/gober/stream"
 	"github.com/cantara/gober/stream/consumer"
@@ -62,7 +63,7 @@ func Init[DT any](pers stream.Stream, eventType, dataTypeVersion string, p strea
 			case e := <-readChan:
 				func() {
 					defer e.Acc()
-					if e.Type == event.Delete {
+					if e.Type == event.Deleted {
 						m.data.Delete(e.Data.Key)
 						return
 					}
@@ -150,9 +151,9 @@ func (m *mapData[DT]) Exists(key string) (exists bool) {
 }
 
 func (m *mapData[DT]) createEvent(key string, data DT) (e event.Event[kv[DT]], err error) {
-	eventType := event.Create
+	eventType := event.Created
 	if m.Exists(key) {
-		eventType = event.Update
+		eventType = event.Updated
 	}
 
 	e = event.Event[kv[DT]]{
@@ -172,7 +173,7 @@ func (m *mapData[DT]) createEvent(key string, data DT) (e event.Event[kv[DT]], e
 
 func (m *mapData[DT]) Delete(key string) (err error) {
 	e := event.Event[kv[DT]]{
-		Type: event.Delete,
+		Type: event.Deleted,
 		Data: kv[DT]{
 			Key: key,
 		},

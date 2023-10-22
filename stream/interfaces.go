@@ -14,10 +14,10 @@ type Stream interface {
 	Name() string
 }
 
-type FilteredStream interface {
-	Write() chan<- event.ByteWriteEvent
-	Store(event event.ByteEvent) (position uint64, err error)
-	Stream(eventTypes []event.Type, from store.StreamPosition, filter Filter, ctx context.Context) (out <-chan event.ByteReadEvent, err error)
+type FilteredStream[T any] interface {
+	Write() chan<- event.WriteEventReadStatus[T]
+	Store(event event.Event[T]) (position uint64, err error)
+	Stream(eventTypes []event.Type, from store.StreamPosition, filter Filter, ctx context.Context) (out <-chan event.ReadEvent[T], err error)
 	End() (pos uint64, err error)
 	Name() string
 }
