@@ -17,8 +17,8 @@ github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6/go.mod h1:grANhF5
 github.com/bytedance/sonic v1.5.0/go.mod h1:ED5hyg4y6t3/9Ku1R6dU/4KyJ48DZ4jPhfY1O2AihPM=
 github.com/bytedance/sonic v1.9.1 h1:6iJ6NqdoxCDr6mbY8h18oSO+cShGSMRGCEo7F2h0x8s=
 github.com/bytedance/sonic v1.9.1/go.mod h1:i736AoUSYt75HyZLoJW9ERYxcy6eaN6h4BZXU064P/U=
-github.com/cantara/bragi v0.7.2 h1:jKDxuRSessMqYUjIU+mKr9FQ5RwhUiIGVWK3FdbyTD4=
-github.com/cantara/bragi v0.7.2/go.mod h1:btpJS4I5xGUohgnno50o8XD1qysPjozSrUzDjWr2W6Q=
+github.com/cantara/bragi v0.7.3 h1:qcxC6LBg/qx6AXfgshrfTfPYnNHy20y9xjt3m96Ia2g=
+github.com/cantara/bragi v0.7.3/go.mod h1:btpJS4I5xGUohgnno50o8XD1qysPjozSrUzDjWr2W6Q=
 github.com/cenkalti/backoff/v3 v3.0.0 h1:ske+9nBpD9qZsTBoF41nW5L+AIuFBKMeze18XQ3eG1c=
 github.com/cenkalti/backoff/v3 v3.0.0/go.mod h1:cIeZDE3IrqwwJl6VUwCN6trj1oXrTS4rc0ij+ULvLYs=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=

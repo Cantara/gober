@@ -164,13 +164,8 @@ func BenchmarkStoreAndStream(b *testing.B) {
 		}
 	}()
 	writeEventStream := c.Write()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		/*
-			data := dd{
-				Id:   i,
-				Name: "test" + b.Name(),
-			}
-		*/
 		we := event.NewWriteEvent(event.Event[[]byte]{
 			Type: event.Created,
 			Data: make([]byte, 1024),
@@ -179,11 +174,11 @@ func BenchmarkStoreAndStream(b *testing.B) {
 			},
 		})
 		events[i] = we
-		if err != nil {
-			b.Error(err)
+		writeEventStream <- events[i]
+		status := <-events[i].Done()
+		if status.Error != nil {
+			b.Error(status.Error)
 			return
 		}
-		writeEventStream <- events[i]
-		<-events[i].Done()
 	}
 }

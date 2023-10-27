@@ -40,8 +40,17 @@ func (s *sMap[T]) Get(key string) (data T, ok bool) {
 }
 
 func (s *sMap[T]) GetOrInit(key string, init func() T) (T, bool) {
-	s.rwLock.RLock()
-	defer s.rwLock.RUnlock()
+	//This somehow breaks the consesus algorighm, so even though we don't want to take a write lock here, we do it so that we don't need to debug that now.
+	/*
+		data, ok := s.Get(key)
+		if ok {
+			return data, ok
+		}
+	*/
+	//We don't really want to take a write lock, so since that is expensive anyways we verify with the read lock first and
+	// if not then we re verify that nothing has happened before we re aquired a write lock
+	s.rwLock.Lock()
+	defer s.rwLock.Unlock()
 	data, ok := s.data[key]
 	if !ok {
 		data = init()

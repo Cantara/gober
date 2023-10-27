@@ -37,6 +37,8 @@ func cryptKeyProvider(_ string) log.RedactedString {
 
 var ct *testing.T
 
+var intervalChan = make(chan struct{})
+
 func executeFunc(d dd) bool {
 	log.Info("Executed", "data", d, "count", count)
 	if count > 16 {
@@ -57,6 +59,9 @@ func executeFunc(d dd) bool {
 	}
 	if count%2 == 0 {
 		//return false
+	}
+	if count == 6 {
+		close(intervalChan)
 	}
 	//time.Sleep(10 * time.Second)
 
@@ -82,17 +87,17 @@ func TestInit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edt, err := Init[dd](store, p.AddTopic, "testdata_schedule1", "1.0.0", cryptKeyProvider, executeFunc, 5, ctxGlobal)
+	edt, err := Init[dd](store, p.AddTopic, "testdata_schedule1", "1.0.0", cryptKeyProvider, executeFunc, time.Second*15, false, 5, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	ts2, err = Init[dd](store, p.AddTopic, "testdata_schedule2", "1.0.0", cryptKeyProvider, executeFunc, 5, ctxGlobal)
+	ts2, err = Init[dd](store, p.AddTopic, "testdata_schedule2", "1.0.0", cryptKeyProvider, executeFunc, time.Second*15, true, 5, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	ts3, err = Init[dd](store, p.AddTopic, "testdata_schedule3", "1.0.0", cryptKeyProvider, executeFunc, 5, ctxGlobal)
+	ts3, err = Init[dd](store, p.AddTopic, "testdata_schedule3", "1.0.0", cryptKeyProvider, executeFunc, time.Second*15, false, 5, ctxGlobal)
 	if err != nil {
 		t.Error(err)
 		return
@@ -100,25 +105,29 @@ func TestInit(t *testing.T) {
 	ts = edt
 	go p.Run()
 	time.Sleep(time.Microsecond)
+	log.Info("init done")
 	return
 }
 
 func TestCreate(t *testing.T) {
+	log.Info("creating single event")
 	ct = t
 	data := dd{
 		Id:   1,
 		Name: "test",
 	}
 	wg.Add(1)
-	err := ts.Create(time.Now(), NoInterval, data)
+	err := ts.Create("test_task_1", time.Now(), NoInterval, data)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	log.Info("created single event")
 	return
 }
 
 func TestFinish(t *testing.T) {
+	log.Info("finishing single event")
 	ct = t
 	c := make(chan struct{})
 	go func() {
@@ -130,35 +139,36 @@ func TestFinish(t *testing.T) {
 		t.Error("timeout on task finish")
 	case <-c:
 	}
+	log.Info("finishied single event")
 }
 
 func TestCreateIntervalWithCatchup(t *testing.T) {
+	log.Info("creating first task in reacurring task chain")
 	ct = t
 	data := dd{
 		Id:   1,
 		Name: "test_interval",
 	}
-	wg.Add(15)
-	err := ts.Create(time.Now().Add(-time.Second*100), 10*time.Second, data)
+	wg.Add(5)
+	err := ts.Create("test_task_recurring", time.Now().Add(-time.Second*100), 10*time.Second, data)
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	log.Info("created first task in reacurring task chain")
 	return
 }
 
 func TestFinishInterval(t *testing.T) {
+	log.Info("staring to wait for reacurring tast to be executed 15 times")
 	ct = t
-	c := make(chan struct{})
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
 	select {
-	case <-time.After(170 * time.Second):
+	case <-time.After(60 * time.Second):
 		t.Error("timeout on task finish")
-	case <-c:
+	case <-intervalChan:
+		wg.Wait()
 	}
+	log.Info("done waiting for reacurring tast to be executed 15 times")
 }
 
 func TestTairdown(t *testing.T) {
@@ -166,7 +176,10 @@ func TestTairdown(t *testing.T) {
 	ctxGlobalCancel()
 }
 
+var benchRun = 0
+
 func BenchmarkTasks_Create_Select_Finish(b *testing.B) {
+	benchRun++
 	//log.SetLevel(log.ERROR) TODO: should add to sbragi
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer ctxCancel()
@@ -176,12 +189,12 @@ func BenchmarkTasks_Create_Select_Finish(b *testing.B) {
 		return
 	}
 	token := "someTestToken"
-	p, err := consensus.Init(3134, token, local.New())
+	p, err := consensus.Init(uint16(3143+benchRun), token, local.New())
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	edt, err := Init[dd](store, p.AddTopic, "testdata", "1.0.0", cryptKeyProvider, func(d dd) bool { log.Info("benchmark task ran", "data", d); return true }, 10, ctx) //FIXME: There seems to be an issue with reusing streams
+	edt, err := Init[dd](store, p.AddTopic, "testdata", "1.0.0", cryptKeyProvider, func(d dd) bool { log.Info("benchmark task ran", "data", d); return true }, time.Second, false, 10, ctx) //FIXME: There seems to be an issue with reusing streams
 	if err != nil {
 		b.Error(err)
 		return
@@ -191,8 +204,9 @@ func BenchmarkTasks_Create_Select_Finish(b *testing.B) {
 		Id:   1,
 		Name: "test",
 	}
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = edt.Create(time.Now(), NoInterval, data)
+		err = edt.Create(fmt.Sprintf("bench_task_%d", i), time.Now(), NoInterval, data)
 		if err != nil {
 			b.Error(err)
 			return

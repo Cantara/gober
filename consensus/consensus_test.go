@@ -11,6 +11,8 @@ import (
 var c Consensus
 
 func TestInit(t *testing.T) {
+	dl, _ := log.NewDebugLogger()
+	dl.SetDefault()
 	log.Info("Initializing consensus")
 	token := "someTestToken"
 	topic := "test"

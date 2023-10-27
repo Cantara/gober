@@ -20,6 +20,8 @@ type service[T any] struct {
 	cryptoKey      stream.CryptoKeyProvider
 	timeout        time.Duration
 	selector       uuid.UUID
+	completed      sync.SLK
+	competeChan    chan event.ReadEvent[tm[T]]
 	selectedOutput chan event.ReadEventWAcc[T]
 	writeStream    chan event.WriteEventReadStatus[T]
 	cons           consensus.Consensus
@@ -50,7 +52,9 @@ func New[T any](s stream.Stream, consBuilder consensus.ConsBuilderFunc, cryptoKe
 		cryptoKey:      cryptoKey,
 		timeout:        timeoutDuration,
 		selector:       name,
-		selectedOutput: make(chan event.ReadEventWAcc[T], 0), //Should i recurse competing on a timeout rather than have a buffer here?
+		completed:      sync.NewSLK(),
+		competeChan:    make(chan event.ReadEvent[tm[T]], 100),
+		selectedOutput: make(chan event.ReadEventWAcc[T], 0),
 		writeStream:    make(chan event.WriteEventReadStatus[T], 10),
 		cons:           cons,
 		ctx:            ctx,
@@ -63,6 +67,7 @@ func New[T any](s stream.Stream, consBuilder consensus.ConsBuilderFunc, cryptoKe
 	go c.readStream(eventStream, timeoutChan)
 	go c.readWrites()
 	go c.timeoutHandler(timeoutChan)
+	go c.competeHandler()
 
 	out = &c
 	return
@@ -72,7 +77,7 @@ func (c *service[T]) timeoutHandler(events <-chan event.ReadEvent[tm[T]]) {
 	timeouts := sync.NewMap[context.CancelFunc]()
 	for e := range events {
 		if e.Type == event.Deleted {
-			log.Trace("got new event to cancel time out")
+			log.Info("got new event to cancel time out")
 			id := e.Data.Id.String()
 			cancel, ok := timeouts.Get(id)
 			if !ok {
@@ -82,7 +87,7 @@ func (c *service[T]) timeoutHandler(events <-chan event.ReadEvent[tm[T]]) {
 			cancel()
 			continue
 		}
-		log.Trace("got new event to time out")
+		log.Info("got new event to time out")
 		//This is gona use too much ram, however it is okay for now
 		ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
 		timeouts.Set(e.Data.Id.String(), cancel)
@@ -93,21 +98,24 @@ func (c *service[T]) timeoutHandler(events <-chan event.ReadEvent[tm[T]]) {
 				return
 			}
 			cancel()
-			c.compete(e)
+			c.competeChan <- e
 		}(e, ctx)
 	}
 }
-
 func (c *service[T]) compete(e event.ReadEvent[tm[T]]) {
+	if c.completed.Get(e.Data.Id.String()) {
+		log.Info("already completed, no need to compete", "id", e.Data.Id.String())
+		return
+	}
 	id := e.Data.Id.String()
-	log.Trace("competing")
+	log.Info("competing")
 	won := c.cons.Request(id) //Might need to difirentiate on won lost and completed
 	if !won {
 		log.Debug("did not win consesus", "id", id)
 		// Add timeout wait
 		return
 	}
-	log.Trace("won competition")
+	log.Info("won competition")
 	ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
 	select {
 	case <-ctx.Done():
@@ -139,7 +147,12 @@ func (c *service[T]) compete(e event.ReadEvent[tm[T]]) {
 		},
 	}:
 	}
-	log.Trace("wrote to selectedOutput")
+	log.Info("wrote to selectedOutput")
+}
+func (c *service[T]) competeHandler() {
+	for e := range c.competeChan {
+		c.compete(e)
+	}
 }
 
 func (c *service[T]) readStream(events <-chan event.ReadEventWAcc[tm[T]], timeout chan<- event.ReadEvent[tm[T]]) {
@@ -150,67 +163,74 @@ func (c *service[T]) readStream(events <-chan event.ReadEventWAcc[tm[T]], timeou
 		}
 	}()
 
-	var es map[string]struct {
+	es := map[string]struct {
 		completed bool
 		event     event.ReadEvent[tm[T]]
-	}
-	for more := true; more; { //catchup loop, read until no more backpressure
-		select {
-		case e := <-events:
-			switch e.Type {
-			case event.Created:
-				id := e.Event.Data.Id.String()
-				if !es[id].completed {
-					es[id] = struct {
-						completed bool
-						event     event.ReadEvent[tm[T]]
-					}{
-						completed: false,
-						event:     e.ReadEvent,
-					}
+	}{}
+	p := uint64(0)
+	end, err := c.stream.End()
+	log.WithError(err).Trace("got stream end", "end", end)
+	for p < end { //catchup loop, read until no more backpressure
+		e := <-events
+		switch e.Type {
+		case event.Created:
+			id := e.Event.Data.Id.String()
+			if !es[id].completed {
+				es[id] = struct {
+					completed bool
+					event     event.ReadEvent[tm[T]]
+				}{
+					completed: false,
+					event:     e.ReadEvent,
 				}
-			case event.Updated:
-				//should indicate changes in the event, not sure what to do here.
-			case event.Deleted:
-				id := e.Event.Data.Id.String()
-				v := es[id]
-				v.completed = true
-				es[id] = v
 			}
-			log.Trace("accing reading of self write")
-			e.Acc()
-		default:
-			more = false
+		case event.Updated:
+			//should indicate changes in the event, not sure what to do here.
+		case event.Deleted:
+			id := e.Event.Data.Id.String()
+			v := es[id]
+			v.completed = true
+			es[id] = v
 		}
+		e.Acc()
+		p = e.Position
 	}
 
-	for _, v := range es {
+	for k, v := range es {
 		if v.completed {
+			c.completed.Add(k, c.timeout*3)
 			continue
 		}
-		c.compete(v.event)
+		log.Info("competing for backpressure")
+		// another dirty hack, should not use go
+		//go c.compete(v.event)
+		c.competeChan <- v.event
 		timeout <- v.event
 	}
 
-	log.Trace("backpressure finished")
+	log.Info("backpressure finished")
 
 	for e := range events { //Since this stream is controlled by us, we range over it until it closes
-		log.Debug("range read", "event", e.Data.Id.String())
+		log.Info("range read", "event", e.Data.Id.String())
 		e.Acc()
 		switch e.Type {
 		case event.Created:
 			//New event, compete for it
-			log.Trace("competing for event", "id", e.Data.Id.String())
-			c.compete(e.ReadEvent)
+			log.Info("competing for event", "id", e.Data.Id.String())
+			//Move competing to a sepparate thread as it will get stuck and should use a stack or something instead to decide
+			//Adding go for now as a work around
+			//go c.compete(e.ReadEvent)
+			c.competeChan <- e.ReadEvent
 		case event.Updated:
 			//should indicate changes in the event, not sure what to do here.
 		case event.Deleted:
 			//This should indicate a finished event. Not sure what to do here.
-			log.Trace("read a completed event", "id", e.Data.Id.String())
+			log.Info("read a completed event", "id", e.Data.Id.String())
+			c.completed.Add(e.Data.Id.String(), c.timeout*3)
 		}
-		log.Trace("writing to timeout chan")
+		log.Info("writing to timeout chan")
 		timeout <- e.ReadEvent
-		log.Trace("wrote to timeout chan")
+		log.Info("wrote to timeout chan")
 	}
 }
 

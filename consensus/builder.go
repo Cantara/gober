@@ -65,7 +65,7 @@ func Init(port uint16, token string, discoverer discovery.Discoverer) (Consensus
 }
 
 func Data(c *gin.Context, code int, d any) {
-	log.Info("adding repsons data in correct format", "format", c.Accepted)
+	log.Debug("adding repsons data in correct format", "format", c.Accepted)
 	c.JSON(code, d)
 	return
 }
