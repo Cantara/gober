@@ -18,7 +18,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.22.0
 	golang.org/x/exp v0.0.0-20240404231335-c0f41cb1a7a0
-	nhooyr.io/websocket v1.8.10
+	nhooyr.io/websocket v1.8.11
 )
 
 require (
