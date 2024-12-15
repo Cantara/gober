@@ -1,8 +1,8 @@
 module github.com/cantara/gober
 
-go 1.21
+go 1.22.0
 
-toolchain go1.23.3
+toolchain go1.23.4
 
 require (
 	github.com/EventStore/EventStore-Client-Go v1.0.2
@@ -17,7 +17,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.29.0
-	golang.org/x/exp v0.0.0-20240822175202-778ce7bba035
+	golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e
 	nhooyr.io/websocket v1.8.17
 )
 
