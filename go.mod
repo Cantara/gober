@@ -2,7 +2,7 @@ module github.com/cantara/gober
 
 go 1.23.0
 
-toolchain go1.24.2
+toolchain go1.24.6
 
 require (
 	github.com/EventStore/EventStore-Client-Go v1.0.2
