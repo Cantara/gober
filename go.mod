@@ -6,6 +6,7 @@ toolchain go1.25.0
 
 require (
 	github.com/EventStore/EventStore-Client-Go v1.0.2
+	github.com/EventStore/EventStore-Client-Go/v4 v4.2.0
 	github.com/cantara/bragi v0.8.0
 	github.com/dgraph-io/badger v1.6.2
 	github.com/gin-contrib/cors v1.7.6
@@ -52,7 +53,7 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/genproto v0.0.0-20200815001618-f69a88009b70 // indirect
-	google.golang.org/grpc v1.35.0 // indirect
+	google.golang.org/grpc v1.67.1 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
