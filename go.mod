@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.25.6
 
 require (
-	github.com/EventStore/EventStore-Client-Go v1.0.2
+	github.com/EventStore/EventStore-Client-Go/v4 v4.2.0
 	github.com/EventStore/EventStore-Client-Go/v4 v4.2.0
 	github.com/cantara/bragi v0.8.0
 	github.com/dgraph-io/badger v1.6.2
