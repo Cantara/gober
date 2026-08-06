@@ -1,6 +1,6 @@
 module github.com/cantara/gober
 
-go 1.24.0
+go 1.25
 
 toolchain go1.25.6
 
@@ -12,7 +12,8 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
 	github.com/gobwas/ws v1.4.0
-	github.com/gofrs/uuid v4.4.0+incompatible
+	github.com/gofrs/uuid v3.3.0+incompatible
+	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
